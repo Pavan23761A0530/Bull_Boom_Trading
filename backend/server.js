@@ -241,10 +241,7 @@ const autoSeedLearningData = async () => {
   }
 };
 
-console.log("ENV CHECK");
-console.log(process.env.EMAIL_USER);
-console.log(process.env.EMAIL_PASS ? "PASS FOUND" : "PASS NOT FOUND");
-console.log("Cloudinary Config Check:", process.env.CLOUDINARY_CLOUD_NAME ? "Cloud Name Found" : "Cloud Name Missing");
+
 const app = express();
 
 // Middleware

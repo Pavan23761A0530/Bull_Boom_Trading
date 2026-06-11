@@ -4,7 +4,6 @@ import {
   FaPlus,
   FaTrash,
   FaChartArea,
-  FaRobot,
   FaTimes,
 } from 'react-icons/fa';
 import { motion } from 'framer-motion';
@@ -89,7 +88,6 @@ const WatchlistRow = ({
   onBuy,
   onSell,
   onChart,
-  onAIAnalysis,
 }) => {
   return (
     <motion.tr
@@ -122,13 +120,6 @@ const WatchlistRow = ({
             title="Sell"
           >
             S
-          </button>
-          <button
-            onClick={() => onAIAnalysis(item)}
-            className="flex items-center justify-center w-8 h-8 rounded bg-purple-500 text-white hover:shadow-lg hover:shadow-purple-500/30 transition-all"
-            title="AI Analysis"
-          >
-            <FaRobot className="w-4 h-4" />
           </button>
           <button
             onClick={() => onChart(item)}
@@ -366,10 +357,6 @@ export default function Watchlist() {
     navigate(`/chart/${item.symbol}`);
   };
 
-  const handleAIAnalysis = (item) => {
-    navigate(`/analysis/${item.symbol}`);
-  };
-
   const filteredWatchlist = useMemo(() => {
     if (!searchQuery.trim()) return watchlist;
     return watchlist.filter((item) =>
@@ -488,7 +475,6 @@ export default function Watchlist() {
                       onBuy={handleBuy}
                       onSell={handleSell}
                       onChart={handleChart}
-                      onAIAnalysis={handleAIAnalysis}
                     />
                   ))}
                 </tbody>
