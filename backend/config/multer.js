@@ -1,9 +1,6 @@
 import multer from 'multer';
 import { CloudinaryStorage } from 'multer-storage-cloudinary';
 import cloudinary from './cloudinary.js';
-console.log("Multer Cloudinary Config:");
-console.log(cloudinary.config());
-console.log("MULTER CHECK");
 // Configure Cloudinary Storage
 const storage = new CloudinaryStorage({
   cloudinary: cloudinary,
