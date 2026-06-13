@@ -1,3 +1,4 @@
+
 import dotenv from 'dotenv';
 // Load environment variables FIRST before any other imports!
 dotenv.config();
@@ -7,9 +8,6 @@ import cors from 'cors';
 import helmet from 'helmet';
 import morgan from 'morgan';
 import cookieParser from 'cookie-parser';
-import path from 'path';
-import fs from 'fs';
-import { fileURLToPath } from 'url';
 import connectDB from './config/db.js';
 import mongoose from 'mongoose';
 import authRoutes from './src/routes/authRoutes.js';
@@ -22,9 +20,45 @@ import CourseCategory from './src/models/CourseCategory.model.js';
 import Topic from './src/models/Topic.model.js';
 import Quiz from './src/models/Quiz.model.js';
 import Achievement from './src/models/Achievement.model.js';
+import nodemailer from 'nodemailer';
+
+// --- Environment Variable Validation
+const validateEnv = () => {
+  const requiredVars = ['MONGO_URI', 'JWT_SECRET', 'CLIENT_URL', 'EMAIL_USER', 'EMAIL_PASS', 'NODE_ENV'];
+  const missing = requiredVars.filter(key =&gt; !process.env[key]);
+  
+  if (missing.length &gt; 0) {
+    console.error('❌ Missing required environment variables:', missing);
+    process.exit(1);
+  }
+  
+  console.log('✅ All environment variables are set');
+};
+
+// --- SMTP Verification
+const verifySMTP = async () =&gt; {
+  try {
+    const transporter = nodemailer.createTransport({
+      host: 'smtp-relay.brevo.com',
+      port: 587,
+      secure: false,
+      auth: {
+        user: process.env.EMAIL_USER,
+        pass: process.env.EMAIL_PASS
+      }
+    });
+    
+    await transporter.verify();
+    console.log('✅ SMTP Connected');
+    return transporter;
+  } catch (error) {
+    console.error('❌ SMTP Failed:', error.message);
+    return null;
+  }
+};
 
 // Auto-seed learning data if database is empty
-const autoSeedLearningData = async () => {
+const autoSeedLearningData = async () =&gt; {
   try {
     const categoryCount = await CourseCategory.countDocuments();
     
@@ -116,49 +150,49 @@ const autoSeedLearningData = async () => {
       ];
 
       const createdCategories = await CourseCategory.insertMany(categoriesData);
-      console.log(`✅ Created ${createdCategories.length} categories`);
+      console.log(`✅ Created ${createdCategories.length} categories');
 
       // --- Create Topics ---
       const topicsData = [];
       // Options Basics topics
       topicsData.push(
-        { category: createdCategories[0]._id, title: 'What are Options?', description: 'An introduction to options contracts and how they work.', icon: '📚', content: `<p>Options are financial derivatives that give buyers the right, but not the obligation, to buy or sell an underlying asset at a specified price on or before a specified date.</p><h3>Key Concepts:</h3><ul><li><strong>Right, not Obligation:</strong> Buyers can choose to exercise or let the option expire</li><li><strong>Underlying Asset:</strong> Stocks, indices, commodities, etc.</li><li><strong>Strike Price:</strong> The agreed price for buying/selling</li><li><strong>Expiry Date:</strong> The last day the option is valid</li></ul>`, keyTakeaways: ['Options give rights, not obligations', 'Calls = right to buy, Puts = right to sell', 'Every option has a limited lifespan'], examples: [{ title: 'Everyday Analogy', description: 'Think of an option like a rain check at a store: you pay a small fee to lock in a price, but you can choose not to use it.' }], videoUrl: 'https://www.youtube.com/embed/dQw4w9WgXcQ', duration: '10 min', order: 1 },
-        { category: createdCategories[0]._id, title: 'Call Option', description: 'Everything you need to know about call options.', icon: '📈', content: `<p>A call option is a contract that gives the buyer the right to buy an underlying asset at a predetermined strike price before expiration.</p><h3>How Call Options Work:</h3><ul><li>Buyer pays a premium upfront</li><li>Profits when the underlying price rises above strike + premium</li><li>Maximum loss is the premium paid</li><li>Seller has potentially unlimited loss</li></ul>`, keyTakeaways: ['Calls profit from upward price movements', 'Buyer risk limited to premium', 'Seller has theoretically unlimited risk'], examples: [{ title: 'Reliance Call Example', description: 'Buy Reliance 2500 Call at ₹50. Profit starts when Reliance crosses ₹2550.' }], videoUrl: 'https://www.youtube.com/embed/dQw4w9WgXcQ', duration: '12 min', order: 2 },
-        { category: createdCategories[0]._id, title: 'Put Option', description: 'Complete guide to put options.', icon: '📉', content: `<p>A put option is a contract that gives the buyer the right to sell an underlying asset at a predetermined strike price before expiration.</p><h3>How Put Options Work:</h3><ul><li>Buyer pays a premium upfront</li><li>Profits when underlying price falls below strike - premium</li><li>Maximum loss is the premium paid</li><li>Often used for hedging existing positions</li></ul>`, keyTakeaways: ['Puts profit from downward price movements', 'Great for hedging long positions', 'Buyer risk limited to premium'], examples: [{ title: 'Hedging with Puts', description: 'If you own 100 shares of a stock, buy a put to protect against a price drop.' }], videoUrl: 'https://www.youtube.com/embed/dQw4w9WgXcQ', duration: '12 min', order: 3 },
-        { category: createdCategories[0]._id, title: 'Strike Price', description: 'Learn how to choose the right strike price.', icon: '🎯', content: `<p>The strike price is the fixed price at which the option holder can buy (call) or sell (put) the underlying asset.</p><h3>Types of Strikes:</h3><ul><li><strong>ITM (In the Money):</strong> Call - Strike < Price, Put - Strike > Price</li><li><strong>ATM (At the Money):</strong> Strike ≈ Price</li><li><strong>OTM (Out of the Money):</strong> Call - Strike > Price, Put - Strike < Price</li></ul>`, keyTakeaways: ['ITM options have intrinsic value', 'ATM options have highest time value', 'OTM options are cheaper but riskier'], examples: [{ title: 'Strike Selection', description: 'Aggressive traders buy OTM strikes, conservative traders buy ITM strikes.' }], videoUrl: 'https://www.youtube.com/embed/dQw4w9WgXcQ', duration: '8 min', order: 4 },
-        { category: createdCategories[0]._id, title: 'Premium', description: 'Understand option premium components.', icon: '💵', content: `<p>Option premium is the price you pay for an option. It has two main components: intrinsic value and time value.</p><h3>Premium Components:</h3><ul><li><strong>Intrinsic Value:</strong> Real, tangible value if option is ITM</li><li><strong>Time Value:</strong> Value of time remaining until expiry</li><li><strong>Volatility:</strong> Implied volatility impacts time value</li></ul>`, keyTakeaways: ['Premium = Intrinsic + Time', 'Time value decays exponentially near expiry', 'Higher volatility = higher premium'], examples: [{ title: 'Premium Breakdown', description: 'A 2500 Call at ₹80 with spot at 2550: ₹50 intrinsic, ₹30 time value.' }], videoUrl: 'https://www.youtube.com/embed/dQw4w9WgXcQ', duration: '9 min', order: 5 },
-        { category: createdCategories[0]._id, title: 'Expiry', description: 'Learn about option expiry dates.', icon: '📅', content: `<p>Option expiry is the last day an option can be traded or exercised. After expiry, OTM options become worthless.</p><h3>Expiry Cycles:</h3><ul><li><strong>Weekly:</strong> Expire on Thursdays (Nifty/BankNifty)</li><li><strong>Monthly:</strong> Expire on last Thursday of the month</li><li><strong>Quarterly:</strong> Expire on last Thursday of quarter</li></ul>`, keyTakeaways: ['Time value decays faster near expiry', 'Expiry day has high volatility', 'Roll over to next month if needed'], examples: [{ title: 'Rolling Over', description: 'If an option is near expiry and you want to keep your position, sell current and buy next month option.' }], videoUrl: 'https://www.youtube.com/embed/dQw4w9WgXcQ', duration: '7 min', order: 6 },
-        { category: createdCategories[0]._id, title: 'Margin', description: 'Margin requirements for option sellers.', icon: '🔒', content: `<p>Option buyers pay full premium upfront. Option sellers need to deposit margin as collateral to cover potential losses.</p><h3>Margin Types:</h3><ul><li><strong>SPAN Margin:</strong> Standard Portfolio Analysis of Risk</li><li><strong>Exposure Margin:</strong> Additional margin over SPAN</li><li><strong>Margin Changes:</strong> Increases with volatility and near expiry</li></ul>`, keyTakeaways: ['Buyers: No margin needed', 'Sellers: Must deposit margin', 'Margin can change daily'], examples: [{ title: 'Margin Calculation', description: 'Selling an Nifty ATM call may require around ₹1,50,000 - ₹2,00,000 margin.' }], videoUrl: 'https://www.youtube.com/embed/dQw4w9WgXcQ', duration: '11 min', order: 7 }
+        { category: createdCategories[0]._id, title: 'What are Options?', description: 'An introduction to options contracts and how they work.', icon: '📚', content: '&lt;p&gt;Options are financial derivatives that give buyers the right, but not the obligation, to buy or sell an underlying asset at a specified price on or before a specified date.&lt;/p&gt;&lt;h3&gt;Key Concepts:&lt;/h3&gt;&lt;ul&gt;&lt;li&gt;&lt;strong&gt;Right, not Obligation:&lt;/strong&gt; Buyers can choose to exercise or let the option expire&lt;/li&gt;&lt;li&gt;&lt;strong&gt;Underlying Asset:&lt;/strong&gt; Stocks, indices, commodities, etc.&lt;/li&gt;&lt;li&gt;&lt;strong&gt;Strike Price:&lt;/strong&gt; The agreed price for buying/selling&lt;/li&gt;&lt;li&gt;&lt;strong&gt;Expiry Date:&lt;/strong&gt; The last day the option is valid&lt;/li&gt;&lt;/ul&gt;', keyTakeaways: ['Options give rights, not obligations', 'Calls = right to buy, Puts = right to sell', 'Every option has a limited lifespan'], examples: [{ title: 'Everyday Analogy', description: 'Think of an option like a rain check at a store: you pay a small fee to lock in a price, but you can choose not to use it.' }], videoUrl: 'https://www.youtube.com/embed/dQw4w9WgXcQ', duration: '10 min', order: 1 },
+        { category: createdCategories[0]._id, title: 'Call Option', description: 'Everything you need to know about call options.', icon: '📈', content: '&lt;p&gt;A call option is a contract that gives the buyer the right to buy an underlying asset at a predetermined strike price before expiration.&lt;/p&gt;&lt;h3&gt;How Call Options Work:&lt;/h3&gt;&lt;ul&gt;&lt;li&gt;Buyer pays a premium upfront&lt;/li&gt;&lt;li&gt;Profits when the underlying price rises above strike + premium&lt;/li&gt;&lt;li&gt;Maximum loss is the premium paid&lt;/li&gt;&lt;li&gt;Seller has potentially unlimited loss&lt;/li&gt;&lt;/ul&gt;', keyTakeaways: ['Calls profit from upward price movements', 'Buyer risk limited to premium', 'Seller has theoretically unlimited risk'], examples: [{ title: 'Reliance Call Example', description: 'Buy Reliance 2500 Call at ₹50. Profit starts when Reliance crosses ₹2550.' }], videoUrl: 'https://www.youtube.com/embed/dQw4w9WgXcQ', duration: '12 min', order: 2 },
+        { category: createdCategories[0]._id, title: 'Put Option', description: 'Complete guide to put options.', icon: '📉', content: '&lt;p&gt;A put option is a contract that gives the buyer the right to sell an underlying asset at a predetermined strike price before expiration.&lt;/p&gt;&lt;h3&gt;How Put Options Work:&lt;/h3&gt;&lt;ul&gt;&lt;li&gt;Buyer pays a premium upfront&lt;/li&gt;&lt;li&gt;Profits when underlying price falls below strike - premium&lt;/li&gt;&lt;li&gt;Maximum loss is the premium paid&lt;/li&gt;&lt;li&gt;Often used for hedging existing positions&lt;/li&gt;&lt;/ul&gt;', keyTakeaways: ['Puts profit from downward price movements', 'Great for hedging long positions', 'Buyer risk limited to premium'], examples: [{ title: 'Hedging with Puts', description: 'If you own 100 shares of a stock, buy a put to protect against a price drop.' }], videoUrl: 'https://www.youtube.com/embed/dQw4w9WgXcQ', duration: '12 min', order: 3 },
+        { category: createdCategories[0]._id, title: 'Strike Price', description: 'Learn how to choose the right strike price.', icon: '🎯', content: '&lt;p&gt;The strike price is the fixed price at which the option holder can buy (call) or sell (put) the underlying asset.&lt;/p&gt;&lt;h3&gt;Types of Strikes:&lt;/h3&gt;&lt;ul&gt;&lt;li&gt;&lt;strong&gt;ITM (In the Money):&lt;/strong&gt; Call - Strike &lt; Price, Put - Strike &gt; Price&lt;/li&gt;&lt;li&gt;&lt;strong&gt;ATM (At the Money):&lt;/strong&gt; Strike ≈ Price&lt;/li&gt;&lt;li&gt;&lt;strong&gt;OTM (Out of the Money):&lt;/strong&gt; Call - Strike &gt; Price, Put - Strike &lt; Price&lt;/li&gt;&lt;/ul&gt;', keyTakeaways: ['ITM options have intrinsic value', 'ATM options have highest time value', 'OTM options are cheaper but riskier'], examples: [{ title: 'Strike Selection', description: 'Aggressive traders buy OTM strikes, conservative traders buy ITM strikes.' }], videoUrl: 'https://www.youtube.com/embed/dQw4w9WgXcQ', duration: '8 min', order: 4 },
+        { category: createdCategories[0]._id, title: 'Premium', description: 'Understand option premium components.', icon: '💵', content: '&lt;p&gt;Option premium is the price you pay for an option. It has two main components: intrinsic value and time value.&lt;/p&gt;&lt;h3&gt;Premium Components:&lt;/h3&gt;&lt;ul&gt;&lt;li&gt;&lt;strong&gt;Intrinsic Value:&lt;/strong&gt; Real, tangible value if option is ITM&lt;/li&gt;&lt;li&gt;&lt;strong&gt;Time Value:&lt;/strong&gt; Value of time remaining until expiry&lt;/li&gt;&lt;li&gt;&lt;strong&gt;Volatility:&lt;/strong&gt; Implied volatility impacts time value&lt;/li&gt;&lt;/ul&gt;', keyTakeaways: ['Premium = Intrinsic + Time', 'Time value decays exponentially near expiry', 'Higher volatility = higher premium'], examples: [{ title: 'Premium Breakdown', description: 'A 2500 Call at ₹80 with spot at 2550: ₹50 intrinsic, ₹30 time value.' }], videoUrl: 'https://www.youtube.com/embed/dQw4w9WgXcQ', duration: '9 min', order: 5 },
+        { category: createdCategories[0]._id, title: 'Expiry', description: 'Learn about option expiry dates.', icon: '📅', content: '&lt;p&gt;Option expiry is the last day an option can be traded or exercised. After expiry, OTM options become worthless.&lt;/p&gt;&lt;h3&gt;Expiry Cycles:&lt;/h3&gt;&lt;ul&gt;&lt;li&gt;&lt;strong&gt;Weekly:&lt;/strong&gt; Expire on Thursdays (Nifty/BankNifty)&lt;/li&gt;&lt;li&gt;&lt;strong&gt;Monthly:&lt;/strong&gt; Expire on last Thursday of the month&lt;/li&gt;&lt;li&gt;&lt;strong&gt;Quarterly:&lt;/strong&gt; Expire on last Thursday of quarter&lt;/li&gt;&lt;/ul&gt;', keyTakeaways: ['Time value decays faster near expiry', 'Expiry day has high volatility', 'Roll over to next month if needed'], examples: [{ title: 'Rolling Over', description: 'If an option is near expiry and you want to keep your position, sell current and buy next month option.' }], videoUrl: 'https://www.youtube.com/embed/dQw4w9WgXcQ', duration: '7 min', order: 6 },
+        { category: createdCategories[0]._id, title: 'Margin', description: 'Margin requirements for option sellers.', icon: '🔒', content: '&lt;p&gt;Option buyers pay full premium upfront. Option sellers need to deposit margin as collateral to cover potential losses.&lt;/p&gt;&lt;h3&gt;Margin Types:&lt;/h3&gt;&lt;ul&gt;&lt;li&gt;&lt;strong&gt;SPAN Margin:&lt;/strong&gt; Standard Portfolio Analysis of Risk&lt;/li&gt;&lt;li&gt;&lt;strong&gt;Exposure Margin:&lt;/strong&gt; Additional margin over SPAN&lt;/li&gt;&lt;li&gt;&lt;strong&gt;Margin Changes:&lt;/strong&gt; Increases with volatility and near expiry&lt;/li&gt;&lt;/ul&gt;', keyTakeaways: ['Buyers: No margin needed', 'Sellers: Must deposit margin', 'Margin can change daily'], examples: [{ title: 'Margin Calculation', description: 'Selling an Nifty ATM call might require around ₹1,50,000 - ₹2,00,000 margin.' }], videoUrl: 'https://www.youtube.com/embed/dQw4w9WgXcQ', duration: '11 min', order: 7 }
       );
       // Charts & Candles topics
       topicsData.push(
-        { category: createdCategories[1]._id, title: 'Candlestick Basics', description: 'Learn to read and interpret candlestick charts.', icon: '🕯️', content: `<p>Candlesticks are the most popular way to visualize price action. Each candle shows open, high, low, and close prices for a period.</p><h3>Candle Anatomy:</h3><ul><li><strong>Body:</strong> Range between open and close</li><li><strong>Upper Wick:</strong> High of the period</li><li><strong>Lower Wick:</strong> Low of the period</li><li><strong>Green/White:</strong> Close > Open (bullish)</li><li><strong>Red/Black:</strong> Close < Open (bearish)</li></ul>`, keyTakeaways: ['Long wicks show rejection of price levels', 'Long bodies show strong momentum', 'Candles should be analyzed in context'], examples: [{ title: 'Reading a Candle', description: 'A long green candle with small wicks shows strong buying pressure throughout the period.' }], videoUrl: 'https://www.youtube.com/embed/dQw4w9WgXcQ', duration: '12 min', order: 1 },
-        { category: createdCategories[1]._id, title: 'Doji', description: 'The powerful reversal pattern.', icon: '⚠️', content: `<p>A Doji has open and close prices at the same level, showing indecision between buyers and sellers.</p><h3>What Doji Means:</h3><ul><li>Complete indecision in the market</li><li>Often signals a potential reversal</li><li>Needs confirmation from next candle</li><li>Variations: Gravestone, Dragonfly, Long-legged</li></ul>`, keyTakeaways: ['Doji = indecision', 'Appears at tops, bottoms, and decision points', 'Confirmation required'], examples: [{ title: 'Evening Star with Doji', description: 'A Doji at the top of an uptrend can signal exhaustion.' }], videoUrl: 'https://www.youtube.com/embed/dQw4w9WgXcQ', duration: '8 min', order: 2 },
-        { category: createdCategories[1]._id, title: 'Hammer', description: 'The bullish reversal pattern.', icon: '🔨', content: `<p>A Hammer appears at bottoms and has a small body at the top with a long lower wick.</p><h3>Hammer Conditions:</h3><ul><li>Appears after a downtrend</li><li>Small body at upper end of range</li><li>Lower wick at least 2x body length</li><li>Upper wick very small or nonexistent</li></ul>`, keyTakeaways: ['Hammer = bullish reversal', 'Long lower wick shows buying pressure', 'Confirmation candle needed'], examples: [{ title: 'Market Bottom', description: 'After a sharp drop, a Hammer shows buyers are stepping in.' }], videoUrl: 'https://www.youtube.com/embed/dQw4w9WgXcQ', duration: '9 min', order: 3 },
-        { category: createdCategories[1]._id, title: 'Shooting Star', description: 'The bearish reversal pattern.', icon: '⭐', content: `<p>A Shooting Star appears at tops and has a small body at the bottom with a long upper wick.</p><h3>Shooting Star Conditions:</h3><ul><li>Appears after an uptrend</li><li>Small body at lower end of range</li><li>Upper wick at least 2x body length</li><li>Lower wick very small or nonexistent</li></ul>`, keyTakeaways: ['Shooting Star = bearish reversal', 'Long upper wick shows selling pressure', 'Confirmation candle needed'], examples: [{ title: 'Market Top', description: 'After a strong rally, a Shooting Star shows sellers are taking over.' }], videoUrl: 'https://www.youtube.com/embed/dQw4w9WgXcQ', duration: '9 min', order: 4 },
-        { category: createdCategories[1]._id, title: 'Engulfing Pattern', description: 'The two-candle reversal pattern.', icon: '🔄', content: `<p>An Engulfing pattern is two candles where the second candle completely covers the body of the first.</p><h3>Types:</h3><ul><li><strong>Bullish Engulfing:</strong> After downtrend, big green candle covers red candle</li><li><strong>Bearish Engulfing:</strong> After uptrend, big red candle covers green candle</li></ul>`, keyTakeaways: ['Engulfing = strong reversal signal', 'Bigger engulf = stronger signal', 'Look at volume too'], examples: [{ title: 'Strong Reversal', description: 'A Bearish Engulfing with high volume is a powerful signal to sell.' }], videoUrl: 'https://www.youtube.com/embed/dQw4w9WgXcQ', duration: '10 min', order: 5 },
-        { category: createdCategories[1]._id, title: 'Morning Star', description: 'The three-candle bullish pattern.', icon: '🌟', content: `<p>The Morning Star is a three-candle bullish reversal pattern that signals the end of a downtrend.</p><h3>Morning Star Components:</h3><ol><li>Long red candle (downward momentum)</li><li>Small body candle (indecision)</li><li>Long green candle (bullish momentum)</li></ol>`, keyTakeaways: ['Very reliable bullish signal', 'Three candles complete the pattern', 'Volume on third candle confirms'], examples: [{ title: 'Reversal Signal', description: 'The Morning Star appeared at the March 2020 lows for many stocks.' }], videoUrl: 'https://www.youtube.com/embed/dQw4w9WgXcQ', duration: '11 min', order: 6 }
+        { category: createdCategories[1]._id, title: 'Candlestick Basics', description: 'Learn to read and interpret candlestick charts.', icon: '🕯️', content: '&lt;p&gt;Candlesticks are the most popular way to visualize price action. Each candle shows open, high, low, and close prices for a period.&lt;/p&gt;&lt;h3&gt;Candle Anatomy:&lt;/h3&gt;&lt;ul&gt;&lt;li&gt;&lt;strong&gt;Body:&lt;/strong&gt; Range between open and close&lt;/li&gt;&lt;li&gt;&lt;strong&gt;Upper Wick:&lt;/strong&gt; High of the period&lt;/li&gt;&lt;li&gt;&lt;strong&gt;Lower Wick:&lt;/strong&gt; Low of the period&lt;/li&gt;&lt;li&gt;&lt;strong&gt;Green/White:&lt;/strong&gt; Close &gt; Open (bullish)&lt;/li&gt;&lt;li&gt;&lt;strong&gt;Red/Black:&lt;/strong&gt; Close &lt; Open (bearish)&lt;/li&gt;&lt;/ul&gt;', keyTakeaways: ['Long wicks show rejection of price levels', 'Long bodies show strong momentum', 'Candles should be analyzed in context'], examples: [{ title: 'Reading a Candle', description: 'A long green candle with small wicks shows strong buying pressure throughout the period.' }], videoUrl: 'https://www.youtube.com/embed/dQw4w9WgXcQ', duration: '12 min', order: 1 },
+        { category: createdCategories[1]._id, title: 'Doji', description: 'The powerful reversal pattern.', icon: '⚠️', content: '&lt;p&gt;A Doji has open and close prices at the same level, showing indecision between buyers and sellers.&lt;/p&gt;&lt;h3&gt;What Doji Means:&lt;/h3&gt;&lt;ul&gt;&lt;li&gt;Complete indecision in the market&lt;/li&gt;&lt;li&gt;Often signals a potential reversal&lt;/li&gt;&lt;li&gt;Needs confirmation from next candle&lt;/li&gt;&lt;li&gt;Variations: Gravestone, Dragonfly, Long-legged&lt;/li&gt;&lt;/ul&gt;', keyTakeaways: ['Doji = indecision', 'Appears at tops, bottoms, and decision points', 'Confirmation required'], examples: [{ title: 'Evening Star with Doji', description: 'A Doji at the top of an uptrend can signal exhaustion.' }], videoUrl: 'https://www.youtube.com/embed/dQw4w9WgXcQ', duration: '8 min', order: 2 },
+        { category: createdCategories[1]._id, title: 'Hammer', description: 'The bullish reversal pattern.', icon: '🔨', content: '&lt;p&gt;A Hammer appears at bottoms and has a small body at the top with a long lower wick.&lt;/p&gt;&lt;h3&gt;Hammer Conditions:&lt;/h3&gt;&lt;ul&gt;&lt;li&gt;Appears after a downtrend&lt;/li&gt;&lt;li&gt;Small body at upper end of range&lt;/li&gt;&lt;li&gt;Lower wick at least 2x body length&lt;/li&gt;&lt;li&gt;Upper wick very small or nonexistent&lt;/li&gt;&lt;/ul&gt;', keyTakeaways: ['Hammer = bullish reversal', 'Long lower wick shows buying pressure', 'Confirmation candle needed'], examples: [{ title: 'Market Bottom', description: 'After a sharp drop, a Hammer shows buyers are stepping in.' }], videoUrl: 'https://www.youtube.com/embed/dQw4w9WgXcQ', duration: '9 min', order: 3 },
+        { category: createdCategories[1]._id, title: 'Shooting Star', description: 'The bearish reversal pattern.', icon: '⭐', content: '&lt;p&gt;A Shooting Star appears at tops and has a small body at the bottom with a long upper wick.&lt;/p&gt;&lt;h3&gt;Shooting Star Conditions:&lt;/h3&gt;&lt;ul&gt;&lt;li&gt;Appears after an uptrend&lt;/li&gt;&lt;li&gt;Small body at lower end of range&lt;/li&gt;&lt;li&gt;Upper wick at least 2x body length&lt;/li&gt;&lt;li&gt;Lower wick very small or nonexistent&lt;/li&gt;&lt;/ul&gt;', keyTakeaways: ['Shooting Star = bearish reversal', 'Long upper wick shows selling pressure', 'Confirmation candle needed'], examples: [{ title: 'Market Top', description: 'After a strong rally, a Shooting Star shows sellers are taking over.' }], videoUrl: 'https://www.youtube.com/embed/dQw4w9WgXcQ', duration: '9 min', order: 4 },
+        { category: createdCategories[1]._id, title: 'Engulfing Pattern', description: 'The two-candle reversal pattern.', icon: '🔄', content: '&lt;p&gt;An Engulfing pattern is two candles where the second candle completely covers the body of the first.&lt;/p&gt;&lt;h3&gt;Types:&lt;/h3&gt;&lt;ul&gt;&lt;li&gt;&lt;strong&gt;Bullish Engulfing:&lt;/strong&gt; After downtrend, big green candle covers red candle&lt;/li&gt;&lt;li&gt;&lt;strong&gt;Bearish Engulfing:&lt;/strong&gt; After uptrend, big red candle covers green candle&lt;/li&gt;&lt;/ul&gt;', keyTakeaways: ['Engulfing = strong reversal signal', 'Bigger engulf = stronger signal', 'Look at volume too'], examples: [{ title: 'Strong Reversal', description: 'A Bearish Engulfing with high volume is a powerful signal to sell.' }], videoUrl: 'https://www.youtube.com/embed/dQw4w9WgXcQ', duration: '10 min', order: 5 },
+        { category: createdCategories[1]._id, title: 'Morning Star', description: 'The three-candle bullish pattern.', icon: '🌟', content: '&lt;p&gt;The Morning Star is a three-candle bullish reversal pattern that signals the end of a downtrend.&lt;/p&gt;&lt;h3&gt;Morning Star Components:&lt;/h3&gt;&lt;ol&gt;&lt;li&gt;Long red candle (downward momentum)&lt;/li&gt;&lt;li&gt;Small body candle (indecision)&lt;/li&gt;&lt;li&gt;Long green candle (bullish momentum)&lt;/li&gt;&lt;/ol&gt;', keyTakeaways: ['Very reliable bullish signal', 'Three candles complete the pattern', 'Volume on third candle confirms'], examples: [{ title: 'Reversal Signal', description: 'The Morning Star appeared at the March 2020 lows for many stocks.' }], videoUrl: 'https://www.youtube.com/embed/dQw4w9WgXcQ', duration: '11 min', order: 6 }
       );
       // Option Greeks topics
       topicsData.push(
-        { category: createdCategories[2]._id, title: 'Delta', description: 'Learn how Delta affects your options.', icon: '📐', content: `<p>Delta measures how much an option's price changes for a ₹1 change in the underlying asset.</p><h3>Delta Values:</h3><ul><li>Call: 0 to +1 (0.5 ATM)</li><li>Put: -1 to 0 (-0.5 ATM)</li><li>Deep ITM: near ±1</li><li>Deep OTM: near 0</li></ul>`, keyTakeaways: ['Delta ≈ probability of expiring ITM', 'ITM options have higher delta', 'Delta changes as price changes'], examples: [{ title: 'Delta Example', description: 'Call with 0.5 delta: If underlying rises by ₹1, option premium rises by ~₹0.5.' }], videoUrl: 'https://www.youtube.com/embed/dQw4w9WgXcQ', duration: '15 min', order: 1 },
-        { category: createdCategories[2]._id, title: 'Gamma', description: 'Understand Gamma, the rate of change of Delta.', icon: '📐', content: `<p>Gamma measures how much Delta changes for a ₹1 change in the underlying asset. It represents acceleration.</p><h3>Gamma Characteristics:</h3><ul><li>Highest at ATM options</li><li>Increases as expiration approaches</li><li>Positive for long options, negative for short</li></ul>`, keyTakeaways: ['Gamma = sensitivity of delta', 'Gamma increases near expiry', 'Gamma squeezes are real!'], examples: [{ title: 'Gamma in Action', description: 'A big move near expiry can create rapid delta changes (gamma squeeze).' }], videoUrl: 'https://www.youtube.com/embed/dQw4w9WgXcQ', duration: '14 min', order: 2 },
-        { category: createdCategories[2]._id, title: 'Theta', description: 'Time decay - the silent killer.', icon: '⏳', content: `<p>Theta measures how much an option's price decays each day due to time passing.</p><h3>Theta Decay:</h3><ul><li>Negative for long options (losing value daily)</li><li>Positive for short options (gaining value daily)</li><li>Decay accelerates near expiry</li></ul>`, keyTakeaways: ['Time decay is exponential near expiry', 'ATM options lose value fastest', 'Theta is why options are "wasting assets"'], examples: [{ title: 'Theta Impact', description: 'An ATM option with 30 days left might lose ₹5/day, but with 3 days left it could lose ₹50/day!' }], videoUrl: 'https://www.youtube.com/embed/dQw4w9WgXcQ', duration: '13 min', order: 3 },
-        { category: createdCategories[2]._id, title: 'Vega', description: 'Volatility sensitivity.', icon: '🌊', content: `<p>Vega measures how much an option's price changes for a 1% change in implied volatility.</p><h3>Vega Characteristics:</h3><ul><li>Highest for ATM options</li><li>Higher for longer-dated options</li><li>Positive for long options</li></ul>`, keyTakeaways: ['Vega = volatility sensitivity', 'Long options love volatility', 'Vega decreases closer to expiry'], examples: [{ title: 'Vega Example', description: 'A vega of 15 means 1% IV increase adds ₹15 to premium.' }], videoUrl: 'https://www.youtube.com/embed/dQw4w9WgXcQ', duration: '12 min', order: 4 },
-        { category: createdCategories[2]._id, title: 'Rho', description: 'Interest rate sensitivity.', icon: '🏦', content: `<p>Rho measures how much an option's price changes for a 1% change in interest rates.</p><h3>Rho Characteristics:</h3><ul><li>Positive for calls, negative for puts</li><li>Small impact compared to other Greeks</li><li>More impact for longer-dated options</li></ul>`, keyTakeaways: ['Rho least important for most traders', 'Higher rates help calls, hurt puts', 'Mainly affects LEAPs/long-term options'], examples: [{ title: 'Rho Example', description: 'If interest rates rise by 1%, a LEAP might gain ₹10.' }], videoUrl: 'https://www.youtube.com/embed/dQw4w9WgXcQ', duration: '10 min', order: 5 }
+        { category: createdCategories[2]._id, title: 'Delta', description: 'Learn how Delta affects your options.', icon: '📐', content: '&lt;p&gt;Delta measures how much an option's price changes for a ₹1 change in the underlying asset.&lt;/p&gt;&lt;h3&gt;Delta Values:&lt;/h3&gt;&lt;ul&gt;&lt;li&gt;Call: 0 to +1 (0.5 ATM)&lt;/li&gt;&lt;li&gt;Put: -1 to 0 (-0.5 ATM)&lt;/li&gt;&lt;li&gt;Deep ITM: near ±1&lt;/li&gt;&lt;li&gt;Deep OTM: near 0&lt;/li&gt;&lt;/ul&gt;', keyTakeaways: ['Delta ≈ probability of expiring ITM', 'ITM options have higher delta', 'Delta changes as price changes'], examples: [{ title: 'Delta Example', description: 'Call with 0.5 delta: If underlying rises by ₹1, option premium rises by ~₹0.5.' }], videoUrl: 'https://www.youtube.com/embed/dQw4w9WgXcQ', duration: '15 min', order: 1 },
+        { category: createdCategories[2]._id, title: 'Gamma', description: 'Understand Gamma, the rate of change of Delta.', icon: '📐', content: '&lt;p&gt;Gamma measures how much Delta changes for a ₹1 change in the underlying asset. It represents acceleration.&lt;/p&gt;&lt;h3&gt;Gamma Characteristics:&lt;/h3&gt;&lt;ul&gt;&lt;li&gt;Highest at ATM options&lt;/li&gt;&lt;li&gt;Increases as expiration approaches&lt;/li&gt;&lt;li&gt;Positive for long options, negative for short&lt;/li&gt;&lt;/ul&gt;', keyTakeaways: ['Gamma = sensitivity of delta', 'Gamma increases near expiry', 'Gamma squeezes are real!'], examples: [{ title: 'Gamma in Action', description: 'A big move near expiry can create rapid delta changes (gamma squeeze).' }], videoUrl: 'https://www.youtube.com/embed/dQw4w9WgXcQ', duration: '14 min', order: 2 },
+        { category: createdCategories[2]._id, title: 'Theta', description: 'Time decay - the silent killer.', icon: '⏳', content: '&lt;p&gt;Theta measures how much an option's price decays each day due to time passing.&lt;/p&gt;&lt;h3&gt;Theta Decay:&lt;/h3&gt;&lt;ul&gt;&lt;li&gt;Negative for long options (losing value daily)&lt;/li&gt;&lt;li&gt;Positive for short options (gaining value daily)&lt;/li&gt;&lt;li&gt;Decay accelerates near expiry&lt;/li&gt;&lt;/ul&gt;', keyTakeaways: ['Time value decays exponentially near expiry', 'ATM options lose value fastest', 'Theta is why options are "wasting assets"'], examples: [{ title: 'Theta Impact', description: 'An ATM option with 30 days left might lose ₹5/day, but with 3 days left it could lose ₹50/day!' }], videoUrl: 'https://www.youtube.com/embed/dQw4w9WgXcQ', duration: '13 min', order: 3 },
+        { category: createdCategories[2]._id, title: 'Vega', description: 'Volatility sensitivity.', icon: '🌊', content: '&lt;p&gt;Vega measures how much an option's price changes for a 1% change in implied volatility.&lt;/p&gt;&lt;h3&gt;Vega Characteristics:&lt;/h3&gt;&lt;ul&gt;&lt;li&gt;Highest for ATM options&lt;/li&gt;&lt;li&gt;Higher for longer-dated options&lt;/li&gt;&lt;li&gt;Positive for long options&lt;/li&gt;&lt;/ul&gt;', keyTakeaways: ['Vega = volatility sensitivity', 'Long options love volatility', 'Vega decreases closer to expiry'], examples: [{ title: 'Vega Example', description: 'A vega of 15 means 1% IV increase adds ₹15 to premium.' }], videoUrl: 'https://www.youtube.com/embed/dQw4w9WgXcQ', duration: '12 min', order: 4 },
+        { category: createdCategories[2]._id, title: 'Rho', description: 'Interest rate sensitivity.', icon: '🏦', content: '&lt;p&gt;Rho measures how much an option's price changes for a 1% change in interest rates.&lt;/p&gt;&lt;h3&gt;Rho Characteristics:&lt;/h3&gt;&lt;ul&gt;&lt;li&gt;Positive for calls, negative for puts&lt;/li&gt;&lt;li&gt;Small impact compared to other Greeks&lt;/li&gt;&lt;li&gt;More impact for longer-dated options&lt;/li&gt;&lt;/ul&gt;', keyTakeaways: ['Rho least important for most traders', 'Higher rates help calls, hurt puts', 'Mainly affects LEAPs/long-term options'], examples: [{ title: 'Rho Example', description: 'If interest rates rise by 1%, a LEAP might gain ₹10.' }], videoUrl: 'https://www.youtube.com/embed/dQw4w9WgXcQ', duration: '10 min', order: 5 }
       );
       // Open Interest topics
       topicsData.push(
-        { category: createdCategories[3]._id, title: 'OI Basics', description: 'Introduction to Open Interest.', icon: '📊', content: `<p>Open Interest (OI) is the total number of outstanding option contracts that have not been settled.</p><h3>Key Points:</h3><ul><li>One buyer + one seller = +1 OI</li><li>Closing a position reduces OI</li><li>OI shows liquidity and conviction</li><li>Combine with price for better signals</li></ul>`, keyTakeaways: ['OI ≠ Volume', 'Increasing OI = new money coming in', 'Use with price action'], examples: [{ title: 'Build Up', description: 'Price up + OI up = bullish, Price down + OI up = bearish' }], videoUrl: 'https://www.youtube.com/embed/dQw4w9WgXcQ', duration: '12 min', order: 1 },
-        { category: createdCategories[3]._id, title: 'Long Build Up', description: 'Identify bullish positions.', icon: '📈', content: `<p>Long Build Up: Price rising + OI rising = new longs are being created.</p><h3>Characteristics:</h3><ul><li>Sustained price move up</li><li>OI steadily increasing</li><li>Good volume confirmation</li><li>Often seen in strong trends</li></ul>`, keyTakeaways: ['Long build up = bullish conviction', 'Look at strike levels where OI builds', 'Great for trend following'], examples: [{ title: 'Strong Trend', description: 'Nifty rallies 300 points while OI increases by 20% = long build up.' }], videoUrl: 'https://www.youtube.com/embed/dQw4w9WgXcQ', duration: '9 min', order: 2 },
-        { category: createdCategories[3]._id, title: 'Short Build Up', description: 'Identify bearish positions.', icon: '📉', content: `<p>Short Build Up: Price falling + OI rising = new shorts are being created.</p><h3>Characteristics:</h3><ul><li>Sustained price move down</li><li>OI steadily increasing</li><li>Good volume confirmation</li><li>Often seen in breakdowns</li></ul>`, keyTakeaways: ['Short build up = bearish conviction', 'Look at which strike levels get OI', 'Watch for covering later'], examples: [{ title: 'Breakdown', description: 'Stock falls 5% on high volume and rising OI = short build up.' }], videoUrl: 'https://www.youtube.com/embed/dQw4w9WgXcQ', duration: '9 min', order: 3 },
-        { category: createdCategories[3]._id, title: 'Long Unwinding', description: 'Longs taking profits.', icon: '📉', content: `<p>Long Unwinding: Price falling + OI falling = Longs are booking profits.</p><h3>What it Means:</h3><ul><li>Traders exiting long positions</li><li>Price might retrace but trend could resume</li><li>Good time to take partial profits</li><li>Check if it's just profit booking or reversal</li></ul>`, keyTakeaways: ['Long unwinding = profit booking', 'Can be just a pullback', 'Look for price to find support'], examples: [{ title: 'Profit Taking', description: 'After a 300-point rally, Nifty falls 100 points with OI decreasing.' }], videoUrl: 'https://www.youtube.com/embed/dQw4w9WgXcQ', duration: '8 min', order: 4 },
-        { category: createdCategories[3]._id, title: 'Short Covering', description: 'Shorts getting squeezed.', icon: '📈', content: `<p>Short Covering: Price rising + OI falling = Shorts are getting squeezed.</p><h3>Short Squeeze:</h3><ul><li>Short sellers rush to buy back</li><li>Can create sharp, fast rallies</li><li>Often violent moves</li><li>Great for aggressive traders</li></ul>`, keyTakeaways: ['Short covering = sharp rallies', 'Squeezes can happen quickly', 'Perfect for momentum traders'], examples: [{ title: 'Squeeze', description: 'Stock rises 10% in a day with falling OI = massive short squeeze!' }], videoUrl: 'https://www.youtube.com/embed/dQw4w9WgXcQ', duration: '10 min', order: 5 }
+        { category: createdCategories[3]._id, title: 'OI Basics', description: 'Introduction to Open Interest.', icon: '📊', content: '&lt;p&gt;Open Interest (OI) is the total number of outstanding option contracts that have not been settled.&lt;/p&gt;&lt;h3&gt;Key Points:&lt;/h3&gt;&lt;ul&gt;&lt;li&gt;One buyer + one seller = +1 OI&lt;/li&gt;&lt;li&gt;Closing a position reduces OI&lt;/li&gt;&lt;li&gt;OI shows liquidity and conviction&lt;/li&gt;&lt;li&gt;Combine with price for better signals&lt;/li&gt;&lt;/ul&gt;', keyTakeaways: ['OI ≠ Volume', 'Increasing OI = new money coming in', 'Use with price action'], examples: [{ title: 'Build Up', description: 'Price up + OI up = bullish, Price down + OI up = bearish' }], videoUrl: 'https://www.youtube.com/embed/dQw4w9WgXcQ', duration: '12 min', order: 1 },
+        { category: createdCategories[3]._id, title: 'Long Build Up', description: 'Identify bullish positions.', icon: '📈', content: '&lt;p&gt;Long Build Up: Price rising + OI rising = new longs are being created.&lt;/p&gt;&lt;h3&gt;Characteristics:&lt;/h3&gt;&lt;ul&gt;&lt;li&gt;Sustained price move up&lt;/li&gt;&lt;li&gt;OI steadily increasing&lt;/li&gt;&lt;li&gt;Good volume confirmation&lt;/li&gt;&lt;li&gt;Often seen in strong trends&lt;/li&gt;&lt;/ul&gt;', keyTakeaways: ['Long build up = bullish conviction', 'Look at strike levels where OI builds', 'Great for trend following'], examples: [{ title: 'Strong Trend', description: 'Nifty rallies 300 points while OI increases by 20% = long build up.' }], videoUrl: 'https://www.youtube.com/embed/dQw4w9WgXcQ', duration: '9 min', order: 2 },
+        { category: createdCategories[3]._id, title: 'Short Build Up', description: 'Identify bearish positions.', icon: '📉', content: '&lt;p&gt;Short Build Up: Price falling + OI rising = new shorts are being created.&lt;/p&gt;&lt;h3&gt;Characteristics:&lt;/h3&gt;&lt;ul&gt;&lt;li&gt;Sustained price move down&lt;/li&gt;&lt;li&gt;OI steadily increasing&lt;/li&gt;&lt;li&gt;Good volume confirmation&lt;/li&gt;&lt;li&gt;Often seen in breakdowns&lt;/li&gt;&lt;/ul&gt;', keyTakeaways: ['Short build up = bearish conviction', 'Look at which strike levels get OI', 'Watch for covering later'], examples: [{ title: 'Breakdown', description: 'Stock falls 5% on high volume and rising OI = short build up.' }], videoUrl: 'https://www.youtube.com/embed/dQw4w9WgXcQ', duration: '9 min', order: 3 },
+        { category: createdCategories[3]._id, title: 'Long Unwinding', description: 'Longs taking profits.', icon: '📉', content: '&lt;p&gt;Long Unwinding: Price falling + OI falling = Longs are booking profits.&lt;/p&gt;&lt;h3&gt;What it Means:&lt;/h3&gt;&lt;ul&gt;&lt;li&gt;Traders exiting long positions&lt;/li&gt;&lt;li&gt;Price might retrace but trend could resume&lt;/li&gt;&lt;li&gt;Good time to take partial profits&lt;/li&gt;&lt;li&gt;Check if it's just profit booking or reversal&lt;/li&gt;&lt;/ul&gt;', keyTakeaways: ['Long unwinding = profit booking', 'Can be just a pullback', 'Look for price to find support'], examples: [{ title: 'Profit Taking', description: 'After a 300-point rally, Nifty falls 100 points with OI decreasing.' }], videoUrl: 'https://www.youtube.com/embed/dQw4w9WgXcQ', duration: '8 min', order: 4 },
+        { category: createdCategories[3]._id, title: 'Short Covering', description: 'Shorts getting squeezed.', icon: '📈', content: '&lt;p&gt;Short Covering: Price rising + OI falling = Shorts are getting squeezed.&lt;/p&gt;&lt;h3&gt;Short Squeeze:&lt;/h3&gt;&lt;ul&gt;&lt;li&gt;Short sellers rush to buy back&lt;/li&gt;&lt;li&gt;Can create sharp, fast rallies&lt;/li&gt;&lt;li&gt;Often violent moves&lt;/li&gt;&lt;li&gt;Great for aggressive traders&lt;/li&gt;&lt;/ul&gt;', keyTakeaways: ['Short covering = sharp rallies', 'Squeezes can happen quickly', 'Perfect for momentum traders'], examples: [{ title: 'Squeeze', description: 'Stock rises 10% in a day with falling OI = massive short squeeze!' }], videoUrl: 'https://www.youtube.com/embed/dQw4w9WgXcQ', duration: '10 min', order: 5 }
       );
       const remainingCategoryTopics = [
         [
-          { title: 'Straddle', description: 'Play volatility with straddles.', keyTakeaways: ['Buy both call & put at same strike', 'Profit from big move in either direction', 'Needs volatility to work'], duration: '15 min', order: 1 },
-          { title: 'Strangle', description: 'Lower cost volatility strategy.', keyTakeaways: ['Buy OTM call & put', 'Lower cost than straddle', 'Needs bigger move'], duration: '14 min', order: 2 },
+          { title: 'Straddle', description: 'Play volatility with straddles.', keyTakeaways: ['Buy both call &amp; put at same strike', 'Profit from big move in either direction', 'Needs volatility to work'], duration: '15 min', order: 1 },
+          { title: 'Strangle', description: 'Lower cost volatility strategy.', keyTakeaways: ['Buy OTM call &amp; put', 'Lower cost than straddle', 'Needs bigger move'], duration: '14 min', order: 2 },
           { title: 'Iron Condor', description: 'Market neutral strategy.', keyTakeaways: ['Sell OTM spreads on both sides', 'Defined risk/reward', 'Best in sideways market'], duration: '18 min', order: 3 },
           { title: 'Bull Call Spread', description: 'Limited risk bullish spread.', keyTakeaways: ['Buy lower strike call, sell higher', 'Limited profit, limited risk', 'Great for moderate bullishness'], duration: '13 min', order: 4 },
           { title: 'Bear Put Spread', description: 'Limited risk bearish spread.', keyTakeaways: ['Buy higher strike put, sell lower', 'Limited profit, limited risk', 'Great for moderate bearishness'], duration: '13 min', order: 5 },
@@ -173,7 +207,7 @@ const autoSeedLearningData = async () => {
         ],
         [
           { title: 'Discipline', description: 'The most important skill.', keyTakeaways: ['Follow your trading plan', 'Avoid impulsive decisions', 'Discipline beats talent'], duration: '12 min', order: 1 },
-          { title: 'Emotional Control', description: 'Don\'t let emotions decide.', keyTakeaways: ['Fear and greed are traders\' enemies', 'Stay calm and objective', 'Step back when emotional'], duration: '14 min', order: 2 },
+          { title: 'Emotional Control', description: 'Don't let emotions decide.', keyTakeaways: ['Fear and greed are traders' enemies', 'Stay calm and objective', 'Step back when emotional'], duration: '14 min', order: 2 },
           { title: 'Fear and Greed', description: 'Recognize these emotions.', keyTakeaways: ['Fear misses opportunities', 'Greed stays in too long', 'Be aware of market sentiment'], duration: '11 min', order: 3 },
           { title: 'Revenge Trading', description: 'The most expensive mistake.', keyTakeaways: ['Revenge trading = disaster', 'Take a break after a loss', 'Losses are normal'], duration: '13 min', order: 4 },
           { title: 'Trading Journal', description: 'Track, review, improve.', keyTakeaways: ['Track every trade', 'Review monthly', 'Find your strengths/weaknesses'], duration: '10 min', order: 5 }
@@ -187,7 +221,7 @@ const autoSeedLearningData = async () => {
         ],
         [
           { title: 'Scalping', description: 'Quick in and out trades.', keyTakeaways: ['Hold for minutes to hours', 'Lots of trades, small profits', 'Needs tight spreads'], duration: '13 min', order: 1 },
-          { title: 'Momentum Trading', description: 'Go with the flow.', keyTakeaways: ['Buy strength, sell weakness', 'Momentum can persist', 'Don\'t fight the trend'], duration: '12 min', order: 2 },
+          { title: 'Momentum Trading', description: 'Go with the flow.', keyTakeaways: ['Buy strength, sell weakness', 'Momentum can persist', 'Don't fight the trend'], duration: '12 min', order: 2 },
           { title: 'VWAP', description: 'Volume Weighted Average Price.', keyTakeaways: ['VWAP = institutional benchmark', 'Above VWAP = bullish', 'Great support/resistance'], duration: '15 min', order: 3 },
           { title: 'ORB Strategy', description: 'Opening Range Breakout.', keyTakeaways: ['First 15-30 minute range', 'Breakout = direction for day', 'Classic intraday strategy'], duration: '14 min', order: 4 },
           { title: 'Volume Analysis', description: 'Read what volume tells you.', keyTakeaways: ['Volume confirms moves', 'Volume precedes price', 'Study volume patterns'], duration: '12 min', order: 5 }
@@ -200,15 +234,15 @@ const autoSeedLearningData = async () => {
           { title: 'Futures Strategies', description: 'Futures trading strategies.', keyTakeaways: ['Futures for pure direction', 'Spread trading with futures', 'Calendar spreads'], duration: '15 min', order: 5 }
         ]
       ];
-      for (let i = 0; i < remainingCategoryTopics.length; i++) {
+      for (let i = 0; i &lt; remainingCategoryTopics.length; i++) {
         const categoryIndex = i + 4;
-        remainingCategoryTopics[i].forEach((topic, j) => {
+        remainingCategoryTopics[i].forEach((topic, j) =&gt; {
           topicsData.push({
             category: createdCategories[categoryIndex]._id,
             title: topic.title,
             description: topic.description || `Learn about ${topic.title} in trading.`,
             icon: '📖',
-            content: `<p>Welcome to this lesson on ${topic.title}. This topic covers important concepts for your trading education.</p><h3>Key Content:</h3><ul><li>Core concepts explained</li><li>Practical examples included</li><li>Strategies to apply in markets</li><li>Risk management considerations</li></ul>`,
+            content: `&lt;p&gt;Welcome to this lesson on ${topic.title}. This topic covers important concepts for your trading education.&lt;/p&gt;&lt;h3&gt;Key Content:&lt;/h3&gt;&lt;ul&gt;&lt;li&gt;Core concepts explained&lt;/li&gt;&lt;li&gt;Practical examples included&lt;/li&gt;&lt;li&gt;Strategies to apply in markets&lt;/li&gt;&lt;li&gt;Risk management considerations&lt;/li&gt;&lt;/ul&gt;`,
             keyTakeaways: topic.keyTakeaways || ['Master this topic', 'Practice on demo first', 'Risk management is key'],
             examples: [{ title: `${topic.title} Example`, description: 'Apply these concepts in live markets carefully.' }],
             videoUrl: 'https://www.youtube.com/embed/dQw4w9WgXcQ',
@@ -235,9 +269,9 @@ const autoSeedLearningData = async () => {
 
       await Achievement.insertMany(achievementsData);
 
-      console.log('✅ Auto-seeding complete!');
+      console.log('✅ Auto-seeding complete');
     } else {
-      console.log('📚 Learning data already present, skipping auto-seed.');
+      console.log('📚 Learning data already present, skipping auto-seed');
     }
   } catch (error) {
     console.error('❌ Auto-seeding error:', error);
@@ -245,30 +279,32 @@ const autoSeedLearningData = async () => {
 };
 
 
-// Directory setup for ES modules
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
-
 const app = express();
 
 // Middleware
-app.use(helmet()); // Add security headers
-app.use(morgan('dev')); // Log HTTP requests
-app.use(cors({
-  origin: process.env.NODE_ENV === 'production' 
-    ? (process.env.FRONTEND_URL ? [process.env.FRONTEND_URL] : true)
-    : ['http://localhost:5173', 'http://localhost:5174'],
-  credentials: true,
-}));
-app.use(express.json()); // Parse JSON request bodies
-app.use(express.urlencoded({ extended: true })); // Parse URL-encoded request bodies
-app.use(cookieParser()); // Parse cookies
+app.use(helmet());
+app.use(morgan('dev'));
+app.use(
+  cors({
+    origin: [
+      "http://localhost:5173",
+      "http://localhost:5174",
+      process.env.CLIENT_URL,
+    ],
+    credentials: true,
+  })
+);
+app.use(express.json());
+app.use(express.urlencoded({ extended: true }));
+app.use(cookieParser());
 
-// Health Check Route
-app.get('/api/health', (req, res) => {
+// Health Check Endpoint
+app.get('/api/health', async (req, res) =&gt; {
   res.status(200).json({
     success: true,
-    message: 'Bull Boom Backend Running',
+    database: mongoose.connection.readyState === 1 ? 'connected' : 'disconnected',
+    email: process.env.EMAIL_USER ? 'configured' : 'not configured',
+    environment: process.env.NODE_ENV
   });
 });
 
@@ -290,24 +326,8 @@ app.use('/api/positions', positionRoutes);
 // Education Routes
 app.use('/api/education', educationRoutes);
 
-// Serve static frontend files in production
-if (process.env.NODE_ENV === 'production') {
-  const frontendPath = path.join(process.cwd(), "frontend", "dist");
-  if (fs.existsSync(frontendPath)) {
-    console.log("📂 Frontend dist found, serving static files");
-    app.use(express.static(frontendPath));
-
-    // Serve index.html for any non-API routes (SPA routing)
-    app.get("*", (req, res) => {
-      res.sendFile(path.join(frontendPath, "index.html"));
-    });
-  } else {
-    console.log("⚠️ Frontend dist not found, serving API only");
-  }
-}
-
 // Error handling middleware
-app.use((err, req, res, next) => {
+app.use((err, req, res, next) =&gt; {
   console.error(err.stack);
   res.status(500).json({
     success: false,
@@ -317,7 +337,7 @@ app.use((err, req, res, next) => {
 });
 
 // 404 handler
-app.use((req, res, next) => {
+app.use((req, res, next) =&gt; {
   res.status(404).json({
     success: false,
     message: 'Route Not Found',
@@ -325,7 +345,7 @@ app.use((req, res, next) => {
 });
 
 // Graceful shutdown function
-const gracefulShutdown = async (signal) => {
+const gracefulShutdown = async (signal) =&gt; {
   console.log(`\nReceived ${signal}, shutting down gracefully...`);
   try {
     if (mongoose.connection.readyState === 1) {
@@ -340,43 +360,50 @@ const gracefulShutdown = async (signal) => {
 };
 
 // Handle uncaught exceptions
-process.on('uncaughtException', (err) => {
+process.on('uncaughtException', (err) =&gt; {
   console.error('❌ Uncaught Exception:', err);
   gracefulShutdown('uncaughtException');
 });
 
 // Handle unhandled promise rejections
-process.on('unhandledRejection', (reason, promise) => {
+process.on('unhandledRejection', (reason, promise) =&gt; {
   console.error('❌ Unhandled Rejection at:', promise, 'reason:', reason);
   gracefulShutdown('unhandledRejection');
 });
 
 // Handle shutdown signals
-process.on('SIGTERM', () => gracefulShutdown('SIGTERM'));
-process.on('SIGINT', () => gracefulShutdown('SIGINT'));
+process.on('SIGTERM', () =&gt; gracefulShutdown('SIGTERM'));
+process.on('SIGINT', () =&gt; gracefulShutdown('SIGINT'));
 
 // Start server and connect to DB
-const startServer = async () => {
+const startServer = async () =&gt; {
   try {
+    // Validate environment
+    validateEnv();
     // Connect to MongoDB first
     await connectDB();
     
     // Auto-seed learning data if needed
     await autoSeedLearningData();
+    // Verify SMTP
+    const smtpStatus = await verifySMTP();
 
+    console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+    console.log('🚀 Bull Boom Server Started');
+    console.log(`🌐 Environment: ${process.env.NODE_ENV}`);
+    console.log(`📡 Port: ${process.env.PORT}`);
+    console.log(`🔗 Client URL: ${process.env.CLIENT_URL}`);
+    console.log('🗄️ MongoDB Connected');
+    console.log(`📧 SMTP: ${smtpStatus ? 'Connected' : 'Not Connected'}');
+    console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
     // Start Express server
     const PORT = process.env.PORT || 5000;
-    const server = app.listen(PORT, () => {
-      console.log('━━━━━━━━━━━━━━━━━━');
-      console.log('🚀 Bull Boom Server Started');
-      console.log(`🌐 Environment: ${process.env.NODE_ENV || 'development'}`);
-      console.log(`📡 Port: ${PORT}`);
-      console.log('🗄️ MongoDB Connected');
-      console.log('━━━━━━━━━━━━━━━━━━');
+    const server = app.listen(PORT, () =&gt; {
+      console.log(`Server listening on port ${PORT}`);
     });
 
     // Handle server errors
-    server.on('error', (err) => {
+    server.on('error', (err) =&gt; {
       if (err.code === 'EADDRINUSE') {
         console.log('━━━━━━━━━━━━━━━━━━');
         console.log(`❌ Port ${PORT} is already occupied`);
